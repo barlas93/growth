@@ -52,9 +52,9 @@ grouped = data.groupby("Age")["Height"]
 percentiles = grouped.quantile([0.05, 0.5, 0.95]).unstack()
 
 ages = percentiles.index
-p5 = percentiles[0.05]
-p50 = percentiles[0.5]
-p95 = percentiles[0.95]
+p5 = np.maximum.accumulate(percentiles[0.05].fillna(method='ffill'))
+p50 = np.maximum.accumulate(percentiles[0.5].fillna(method='ffill'))
+p95 = np.maximum.accumulate(percentiles[0.95].fillna(method='ffill'))
 
 def estimate_percentile(age, height):
     if age not in ages:
