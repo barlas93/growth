@@ -5,7 +5,6 @@ import numpy as np
 
 st.title("Child Growth Chart Projection Tool")
 
-# --- Conversion Functions ---
 def cm_to_feet_inches(cm):
     total_inches = cm / 2.54
     feet = int(total_inches // 12)
@@ -15,12 +14,20 @@ def cm_to_feet_inches(cm):
 def feet_inches_to_cm(feet, inches):
     return round((feet * 12 + inches) * 2.54, 1)
 
-# --- User Inputs ---
+def get_comorbidity_bin(score):
+    if score == 0:
+        return "0"
+    elif 1 <= score <= 2:
+        return "1–2"
+    elif 3 <= score <= 5:
+        return "3–5"
+    else:
+        return "6+"
+
 sex = st.selectbox("Sex", options=["Male", "Female"])
 current_age = st.slider("Current Age (years)", min_value=0, max_value=18, value=10)
 target_age = st.slider("Target Age (years)", min_value=0, max_value=18, value=15)
 
-# --- Height Input Method ---
 height_unit = st.selectbox("Select Height Unit", options=["Centimeters (cm)", "Feet/Inches (ft/in)"])
 
 if height_unit == "Centimeters (cm)":
@@ -31,9 +38,14 @@ else:
     current_height = feet_inches_to_cm(feet, inches)
     st.markdown(f"Converted Height: **{current_height} cm**")
 
-# --- Load Data ---
+comorbidity_score = st.slider("Pediatric Comorbidity Index (0–10)", min_value=0, max_value=10, value=2)
+comorbidity_bin = get_comorbidity_bin(comorbidity_score)
+st.markdown(f"Comorbidity Group: **{comorbidity_bin}**")
+
 filename = "growthmale.csv" if sex == "Male" else "growthfemale.csv"
 data = pd.read_csv(filename)
+
+data = data[data["Bin"] == comorbidity_bin]
 data = data.sort_values(by="Age")
 
 grouped = data.groupby("Age")["Height"]
@@ -44,33 +56,33 @@ p5 = percentiles[0.05]
 p50 = percentiles[0.5]
 p95 = percentiles[0.95]
 
-# --- Estimate Current Percentile ---
 def estimate_percentile(age, height):
     if age not in ages:
         return None
-    heights_at_age = grouped.get_group(age)
-    return round((heights_at_age < height).mean(), 2)
+    heights_at_age_bin = data[(data["Age"] == age)]
+    if len(heights_at_age_bin) < 5:
+        return None
+    return round((heights_at_age_bin["Height"] < height).mean(), 2)
 
 percentile_rank = estimate_percentile(current_age, current_height)
 
-# --- Predict Future Height ---
-def predict_height(target_age, percentile):
-    if target_age not in ages:
+def predict_height(age, percentile):
+    if age not in ages:
         return None
-    heights_at_age = grouped.get_group(target_age)
-    return round(np.percentile(heights_at_age, percentile * 100), 1)
+    heights_at_age_bin = data[data["Age"] == age]
+    if len(heights_at_age_bin) < 5:
+        return None
+    return round(np.percentile(heights_at_age_bin["Height"], percentile * 100), 1)
 
 predicted_height = predict_height(target_age, percentile_rank)
 
-# --- Display Result ---
 if predicted_height is not None:
     st.markdown(f"### Estimated Height at Age {target_age}: **{predicted_height} cm**")
     feet_pred, inch_pred = cm_to_feet_inches(predicted_height)
     st.markdown(f"Which is approximately: **{feet_pred} ft {inch_pred} in**")
 else:
-    st.warning("Target age is outside the data range.")
+    st.warning("Not enough data for target age and comorbidity group.")
 
-# --- Plot Chart ---
 fig, ax = plt.subplots()
 ax.plot(ages, p5, label="5th Percentile", linestyle="--")
 ax.plot(ages, p50, label="50th Percentile (Median)", linestyle="-")
@@ -79,7 +91,7 @@ ax.scatter(current_age, current_height, color='blue', label="Current Height", zo
 if predicted_height:
     ax.scatter(target_age, predicted_height, color='red', label="Predicted Height", zorder=5)
 
-ax.set_title("Growth Chart")
+ax.set_title("Growth Chart by Age and Comorbidity Group")
 ax.set_xlabel("Age (years)")
 ax.set_ylabel("Height (cm)")
 ax.legend()
